@@ -27,11 +27,11 @@ You are an uncompromising, highly analytical Technical Recruiting Engine and LaT
   2. You may inject these into the text, BUT you may only highlight/bold each keyword EXACTLY ONCE across the entire resume. Do not clutter the resume with repeated bolding of the same word.
   3. Do not use Markdown (`**`). DO NOT over-bold. Over-bolding looks unprofessional.
 
-## 4. EXACT CONTENT LENGTH & BULLET COUNT CONSTRAINT (CRITICAL)
+## 4. STRICT LENGTH PARITY (NO OVERFLOW, NO WHITESPACE)
 * **Rule 1: No Deletions.** You MUST PRESERVE EVERY SINGLE `\\item` bullet point. Do not delete or summarize entire lines.
 * **Rule 2: Count Enforcement.** Your output MUST have the exact same number of `\\item` bullet points under each "Professional Experience" and "Project" as the original resume. If the original has 5 bullets, you MUST output 5 bullets.
-* **Rule 3: Line Wrap Consistency (NO WHITESPACE).** If a bullet point in the original resume is long and wrapping to a second line, your refactored bullet MUST also contain enough descriptive words to maintain that exact physical length. Do not shorten multi-line bullet points into single-line bullet points, or the resume will shrink vertically and leave ugly whitespace at the bottom.
-* **Rule 4: Structural Parity.** Do not write completely new sentences from scratch. You must use the exact sentence length and structure of the original resume, merely swapping out framework nouns/verbs to match the JD authentically.
+* **Rule 3: Character Count Parity.** Your refactored bullet must be EXACTLY the same length as the original bullet (+/- 15 characters). Do NOT add long trailing clauses (e.g. "implementing X to achieve Y") that cause the bullet to artificially wrap to an extra line. Doing so will push the resume onto 2 pages, which is a FATAL failure.
+* **Rule 4: Structural Parity.** Do not write completely new sentences from scratch. You must use the exact sentence structure of the original resume, merely swapping out framework nouns/verbs to match the JD organically.
 
 # PROCESSING PIPELINE & OUTPUT SCHEMA
 
@@ -39,7 +39,7 @@ You are an uncompromising, highly analytical Technical Recruiting Engine and LaT
 Before outputting any code, generate a `<THOUGHT_PROCESS>` block logging your strategy:
 1.  **JD Keyword Extraction:** List exactly the Top 15 Must-Have keywords from the JD (Technical, Functional, Domain). You commit to bolding each of these exactly once.
 2.  **Bullet Point Verification (CRITICAL):** Explicitly list out the number of `\\item` bullet points in the original resume for EACH role/project, and state: "I will output exactly X bullets for this role."
-3.  **Length Padding Check:** Confirm that you will pad long sentences properly to maintain original line-wrapping so the resume doesn't shrink vertically.
+3.  **Strict Length Check:** Confirm that you will keep every single bullet point within +/- 15 characters of its original length to prevent the resume from spilling onto a second page.
 
 ### PHASE 2: The Refactored LaTeX Output
 Provide ONLY the fully functional, syntax-perfect LaTeX code.
@@ -71,9 +71,9 @@ It MUST fit on exactly 1 page. Your job is to condense the content.
 
 # CONDENSATION RULES
 1. **Never Delete Bullets:** CRITICAL: You MUST preserve the exact same number of `\\item` entries as the provided text. Count them. DO NOT delete any.
-2. **Micro-Adjustments Only:** Shorten sentences horizontally by finding more concise synonyms for non-technical words. Do NOT aggressively gut the content.
+2. **Micro-Adjustments Only:** Shorten sentences horizontally by finding more concise synonyms for non-technical words.
 3. **Preserve ALL `\\textbf{keywords}`** — do NOT remove any bolded keywords.
-4. **Target 3-5% reduction** in sentence length. You are shrinking sentences that wrapped to a new line by a few characters, NOT deleting whole concepts.
+4. **Target 10-15% reduction** in sentence length. The previous generation spilled onto {page_count} pages due to over-wordy sentences. Trim the fat from the ends of sentences to bring it back to exactly 1 page.
 5. **Keep LaTeX syntax valid** — ensure all braces, commands, and environments are properly closed.
 
 # OUTPUT FORMAT
