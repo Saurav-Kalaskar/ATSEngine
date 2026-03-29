@@ -47,24 +47,25 @@ def get_fallback_model() -> str:
     return os.getenv("LLM_FALLBACK_MODEL", "qwen/qwen3-coder:free")
 
 
+import json
+
 async def call_refactor_llm(
     job_description: str,
     latex_code: str,
+    bullets_map: dict,
     use_fallback: bool = False
 ) -> str:
     """
-    Call the LLM to refactor the resume LaTeX code based on the job description.
+    Call the LLM to refactor the resume bullets based on the job description.
 
     Args:
         job_description: The target job description text.
-        latex_code: The current LaTeX resume code.
+        latex_code: The full LaTeX code for context reading.
+        bullets_map: JSON dictionary of the extracted targeted \item bullets.
         use_fallback: If True, use the fallback model instead of primary.
 
     Returns:
-        The raw LLM response text containing <THOUGHT_PROCESS> and <FINAL_LATEX>.
-
-    Raises:
-        Exception: If the LLM API call fails.
+        The raw LLM response text containing <THOUGHT_PROCESS> and <FINAL_JSON>.
     """
     client = get_llm_client()
     model = get_fallback_model() if use_fallback else get_model()
@@ -76,7 +77,11 @@ async def call_refactor_llm(
 
 <CURRENT_LATEX_RESUME>
 {latex_code}
-</CURRENT_LATEX_RESUME>"""
+</CURRENT_LATEX_RESUME>
+
+<BULLETS_TO_EDIT>
+{json.dumps(bullets_map, indent=2)}
+</BULLETS_TO_EDIT>"""
 
     logger.info(f"Calling LLM ({model}) for resume refactoring...")
 
@@ -98,7 +103,7 @@ async def call_refactor_llm(
         if not use_fallback:
             logger.warning(f"Primary model failed ({e}), trying fallback...")
             return await call_refactor_llm(
-                job_description, latex_code, use_fallback=True
+                job_description, latex_code, bullets_map, use_fallback=True
             )
         raise
 

@@ -1,23 +1,18 @@
-"""
-Parser for extracting structured blocks from LLM responses.
-Extracts <THOUGHT_PROCESS> and <FINAL_LATEX> sections.
-"""
-
+import json
 import re
 
-
-def parse_llm_response(raw_response: str) -> tuple[str, str]:
+def parse_llm_response(raw_response: str) -> tuple[str, dict]:
     """
-    Parse the LLM's raw output to extract the thought process and LaTeX code.
+    Parse the LLM's raw output to extract the thought process and the JSON dictionary of edited bullets.
 
     Args:
         raw_response: The complete text response from the LLM.
 
     Returns:
-        A tuple of (thought_process, latex_code).
+        A tuple of (thought_process, updated_bullets_dict).
 
     Raises:
-        ValueError: If either required block is missing from the response.
+        ValueError: If either required block is missing or JSON is invalid.
     """
     # Extract thought process
     tp_match = re.search(
@@ -26,9 +21,9 @@ def parse_llm_response(raw_response: str) -> tuple[str, str]:
         re.DOTALL
     )
 
-    # Extract final LaTeX
-    latex_match = re.search(
-        r"<FINAL_LATEX>(.*?)</FINAL_LATEX>",
+    # Extract final JSON
+    json_match = re.search(
+        r"<FINAL_JSON>\s*(.*?)\s*</FINAL_JSON>",
         raw_response,
         re.DOTALL
     )
@@ -36,26 +31,26 @@ def parse_llm_response(raw_response: str) -> tuple[str, str]:
     if not tp_match:
         raise ValueError(
             "LLM response missing <THOUGHT_PROCESS> block. "
-            "The model may have deviated from the expected output format."
         )
 
-    if not latex_match:
+    if not json_match:
         raise ValueError(
-            "LLM response missing <FINAL_LATEX> block. "
-            "The model may have deviated from the expected output format."
+            "LLM response missing <FINAL_JSON> block. "
         )
 
     thought_process = tp_match.group(1).strip()
-    latex_code = latex_match.group(1).strip()
+    json_code = json_match.group(1).strip()
+    
+    # Sometimes the LLM might wrap the JSON in ```json markdown blocks inside the tag
+    json_code = re.sub(r"^```json\s*", "", json_code)
+    json_code = re.sub(r"```\s*$", "", json_code)
+    
+    try:
+        updated_bullets = json.loads(json_code)
+    except json.JSONDecodeError as e:
+        raise ValueError(f"Failed to decode <FINAL_JSON> block. Error: {str(e)}")
 
-    # Basic validation: LaTeX should contain \documentclass
-    if r"\documentclass" not in latex_code:
-        raise ValueError(
-            "Extracted LaTeX code does not contain \\documentclass. "
-            "The output may be malformed or incomplete."
-        )
-
-    return thought_process, latex_code
+    return thought_process, updated_bullets
 
 
 def parse_condense_response(raw_response: str) -> str:

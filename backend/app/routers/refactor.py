@@ -49,6 +49,8 @@ async def get_template():
         )
 
 
+from app.services.latex_parser import extract_and_templatize_bullets, reconstruct_latex
+
 @router.post(
     "/refactor",
     response_model=RefactorResponse,
@@ -60,21 +62,27 @@ async def get_template():
 async def refactor_resume(request: RefactorRequest):
     """
     Main refactoring pipeline:
-    1. Call LLM to refactor LaTeX based on JD
-    2. Parse the response for thought process + LaTeX code
-    3. Compile LaTeX to PDF
-    4. Verify page count (must be 1)
-    5. If >1 page: condense and retry (max 2 times)
-    6. Return result
+    1. Parse and extract target bullet points
+    2. Call LLM to output updated JSON for those bullets
+    3. Programmatically validate structural lengths (length diff must be <= 0 and >= -1 word)
+    4. Reconstruct and Compile LaTeX to PDF
     """
     condensation_passes = 0
 
-    # --- Step 1: Call LLM for refactoring ---
+    # --- Step 1: Parse Bullet Points ---
+    logger.info("Step 1: Parsing and extracting targeted bullet points...")
+    bullets_map, templated_latex = extract_and_templatize_bullets(request.latex_code)
+    
+    if not bullets_map:
+        raise HTTPException(status_code=400, detail="Could not find any bullet points in Professional Experience or Projects sections.")
+
+    # --- Step 2: Call LLM for refactoring ---
     try:
-        logger.info("Step 1: Calling LLM for resume refactoring...")
+        logger.info(f"Step 2: Calling LLM for resume refactoring ({len(bullets_map)} bullets)...")
         raw_response = await call_refactor_llm(
             job_description=request.job_description,
             latex_code=request.latex_code,
+            bullets_map=bullets_map
         )
     except Exception as e:
         logger.error(f"LLM API call failed: {e}")
@@ -83,10 +91,38 @@ async def refactor_resume(request: RefactorRequest):
             detail=f"LLM API call failed: {str(e)}"
         )
 
-    # --- Step 2: Parse LLM response ---
+    # --- Step 3: Parse and Validate LLM response ---
     try:
-        logger.info("Step 2: Parsing LLM response...")
-        thought_process, refactored_latex = parse_llm_response(raw_response)
+        logger.info("Step 3: Parsing and strictly validating LLM JSON response...")
+        thought_process, updated_bullets = parse_llm_response(raw_response)
+        
+        # Strict validation loop
+        final_valid_bullets = {}
+        for b_id, original_text in bullets_map.items():
+            if b_id not in updated_bullets:
+                logger.warning(f"LLM dropped {b_id}. Reverting to original.")
+                final_valid_bullets[b_id] = original_text
+                continue
+                
+            new_text = updated_bullets[b_id]
+            
+            orig_word_count = len(original_text.split())
+            new_word_count = len(new_text.split())
+            word_diff = orig_word_count - new_word_count
+            
+            # Constraints: new_word_count <= orig_word_count AND new_word_count >= orig_word_count - 1
+            if word_diff < 0 or word_diff > 1:
+                logger.warning(
+                    f"Validation failed for {b_id}: Original={orig_word_count} words, New={new_word_count} words. "
+                    f"Diff={word_diff}. Reverting to original to preserve exact layout."
+                )
+                final_valid_bullets[b_id] = original_text
+            else:
+                final_valid_bullets[b_id] = new_text
+
+        # Reconstruct the LaTeX using only perfectly validated bullets
+        refactored_latex = reconstruct_latex(templated_latex, final_valid_bullets)
+        
     except ValueError as e:
         logger.error(f"Failed to parse LLM response: {e}")
         raise HTTPException(
@@ -94,9 +130,9 @@ async def refactor_resume(request: RefactorRequest):
             detail=f"Failed to parse LLM response: {str(e)}"
         )
 
-    # --- Step 3: Compile LaTeX to PDF ---
+    # --- Step 4: Compile LaTeX to PDF ---
     try:
-        logger.info("Step 3: Compiling LaTeX to PDF...")
+        logger.info("Step 4: Compiling LaTeX to PDF...")
         pdf_base64, page_count = await compile_latex(refactored_latex)
     except LaTeXCompilationError as e:
         logger.error(f"LaTeX compilation failed: {e}")
@@ -106,15 +142,14 @@ async def refactor_resume(request: RefactorRequest):
                    f"Compiler log: {e.compiler_log[:500] if e.compiler_log else 'N/A'}"
         )
 
-    # --- Step 4: One-page verification loop ---
+    # --- Step 5: Absolute worst-case fallback ---
     while page_count > 1 and condensation_passes < MAX_CONDENSE_RETRIES:
         condensation_passes += 1
         logger.info(
-            f"Step 4: Page count is {page_count}, running condensation pass "
+            f"Step 5: Emergency condensation pass (page count {page_count}) "
             f"{condensation_passes}/{MAX_CONDENSE_RETRIES}..."
         )
 
-        # Call LLM to condense
         try:
             condense_response = await call_condense_llm(
                 latex_code=refactored_latex,
@@ -125,7 +160,6 @@ async def refactor_resume(request: RefactorRequest):
             logger.warning(f"Condensation pass {condensation_passes} failed: {e}")
             break
 
-        # Recompile
         try:
             pdf_base64, page_count = await compile_latex(refactored_latex)
         except LaTeXCompilationError as e:
@@ -135,17 +169,7 @@ async def refactor_resume(request: RefactorRequest):
                 detail=f"LaTeX recompilation after condensation failed: {str(e)}"
             )
 
-    # Log final result
-    if page_count > 1:
-        logger.warning(
-            f"Resume still {page_count} pages after {condensation_passes} "
-            f"condensation passes. Returning as-is."
-        )
-
-    logger.info(
-        f"Pipeline complete: {page_count} page(s), "
-        f"{condensation_passes} condensation pass(es)"
-    )
+    logger.info(f"Pipeline complete: {page_count} page(s), {condensation_passes} condensation pass(es)")
 
     return RefactorResponse(
         thought_process=thought_process,
