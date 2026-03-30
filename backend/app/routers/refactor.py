@@ -106,7 +106,7 @@ async def refactor_resume(request: RefactorRequest):
                 
             orig_char_count = len(original_text)
             
-            draft_text = new_text
+            draft_text = updated_bullets[b_id]
             retries = 0
             MAX_PARAPHRASE_RETRIES = 3
 
