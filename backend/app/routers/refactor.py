@@ -5,6 +5,7 @@ API router for resume refactoring endpoints.
 import os
 import logging
 
+import asyncio
 from fastapi import APIRouter, HTTPException
 
 from app.models.schemas import (
@@ -96,21 +97,13 @@ async def refactor_resume(request: RefactorRequest):
         logger.info("Step 3: Parsing and strictly validating LLM JSON response...")
         thought_process, updated_bullets = parse_llm_response(raw_response)
         
-        # Strict validation loop (Character Count Baseline)
-        final_valid_bullets = {}
-        for b_id, original_text in bullets_map.items():
-            if b_id not in updated_bullets:
-                logger.warning(f"LLM dropped {b_id}. Reverting to original.")
-                final_valid_bullets[b_id] = original_text
-                continue
-                
+        # Strict validation loop (Character Count Baseline) - Executed Concurrently
+        async def _validate_bullet(b_id, original_text, new_text):
             orig_char_count = len(original_text)
-            
-            draft_text = updated_bullets[b_id]
+            draft_text = new_text
             retries = 0
             MAX_PARAPHRASE_RETRIES = 3
 
-            # Constraint: new_char_count MUST be <= orig_char_count to guarantee it won't trigger a new line wrap
             while len(draft_text) > orig_char_count and retries < MAX_PARAPHRASE_RETRIES:
                 logger.warning(
                     f"Validation failed for {b_id}: Original={orig_char_count} chars, Draft={len(draft_text)} chars. "
@@ -124,17 +117,27 @@ async def refactor_resume(request: RefactorRequest):
                     )
                 except Exception as e:
                     logger.error(f"Micro-paraphrase exception on attempt {retries + 1}: {e}")
-                
                 retries += 1
             
-            # Post-retry evaluation
             if len(draft_text) > orig_char_count:
-                logger.error(f"All {MAX_PARAPHRASE_RETRIES} paraphrase attempts failed boundary ({len(draft_text)} > {orig_char_count}). Reverting to original layout to protect 1-page compliance.")
-                final_valid_bullets[b_id] = original_text
+                logger.error(f"All {MAX_PARAPHRASE_RETRIES} paraphrase attempts failed boundary ({len(draft_text)} > {orig_char_count}). Reverting to original layout.")
+                return b_id, original_text
+            
+            if retries > 0:
+                logger.info(f"Paraphrase successful after {retries} attempt(s)! Resized to {len(draft_text)} chars. Layout protected.")
+            return b_id, draft_text
+
+        validation_tasks = []
+        for b_id, original_text in bullets_map.items():
+            if b_id not in updated_bullets:
+                logger.warning(f"LLM dropped {b_id}. Reverting to original.")
+                async def identity(k, v): return k, v
+                validation_tasks.append(identity(b_id, original_text))
             else:
-                if retries > 0:
-                    logger.info(f"Paraphrase successful after {retries} attempt(s)! Resized to {len(draft_text)} chars. Layout protected.")
-                final_valid_bullets[b_id] = draft_text
+                validation_tasks.append(_validate_bullet(b_id, original_text, updated_bullets[b_id]))
+                
+        results = await asyncio.gather(*validation_tasks)
+        final_valid_bullets = dict(results)
 
         # Reconstruct the LaTeX using only perfectly validated bullets
         refactored_latex = reconstruct_latex(templated_latex, final_valid_bullets)
@@ -152,10 +155,14 @@ async def refactor_resume(request: RefactorRequest):
         pdf_base64, page_count = await compile_latex(refactored_latex)
     except LaTeXCompilationError as e:
         logger.error(f"LaTeX compilation failed: {e}")
+        # DUMP BROKEN LATEX TRACE FOR DEBUGGING
+        with open("debug_broken.tex", "w") as f:
+            f.write(refactored_latex)
+        
         raise HTTPException(
             status_code=422,
             detail=f"LaTeX compilation failed: {str(e)}. "
-                   f"Compiler log: {e.compiler_log[:500] if e.compiler_log else 'N/A'}"
+                   f"Compiler log: {e.compiler_log[-1000:] if e.compiler_log else 'N/A'}"
         )
 
     # --- Step 5: Absolute worst-case fallback ---
