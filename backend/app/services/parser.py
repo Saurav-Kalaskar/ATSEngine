@@ -45,6 +45,10 @@ def parse_llm_response(raw_response: str) -> tuple[str, dict]:
     json_code = re.sub(r"^```json\s*", "", json_code)
     json_code = re.sub(r"```\s*$", "", json_code)
     
+    # CRITICAL: Fix unescaped LaTeX "\textbf" inside JSON strings which json.loads 
+    # would incorrectly parse as a <TAB> character (\t) followed by "extbf"
+    json_code = json_code.replace(r"\textbf", r"\\textbf")
+    
     try:
         updated_bullets = json.loads(json_code)
     except json.JSONDecodeError as e:
