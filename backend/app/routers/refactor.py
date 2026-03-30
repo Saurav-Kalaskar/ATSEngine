@@ -104,36 +104,37 @@ async def refactor_resume(request: RefactorRequest):
                 final_valid_bullets[b_id] = original_text
                 continue
                 
-            new_text = updated_bullets[b_id]
-            
             orig_char_count = len(original_text)
-            new_char_count = len(new_text)
+            
+            draft_text = new_text
+            retries = 0
+            MAX_PARAPHRASE_RETRIES = 3
 
             # Constraint: new_char_count MUST be <= orig_char_count to guarantee it won't trigger a new line wrap
-            if new_char_count > orig_char_count:
+            while len(draft_text) > orig_char_count and retries < MAX_PARAPHRASE_RETRIES:
                 logger.warning(
-                    f"Validation failed for {b_id}: Original={orig_char_count} chars, New={new_char_count} chars. "
-                    f"Triggering micro-paraphrase to strictly fit within boundary."
+                    f"Validation failed for {b_id}: Original={orig_char_count} chars, Draft={len(draft_text)} chars. "
+                    f"Triggering micro-paraphrase (Attempt {retries + 1}/{MAX_PARAPHRASE_RETRIES})..."
                 )
-                
                 try:
-                    paraphrased = await call_paraphrase_bullet_llm(
+                    draft_text = await call_paraphrase_bullet_llm(
                         original_bullet=original_text,
-                        draft_bullet=new_text,
+                        draft_bullet=draft_text,
                         max_chars=orig_char_count
                     )
-                    
-                    if len(paraphrased) > orig_char_count:
-                        logger.error(f"Paraphrase failed boundary ({len(paraphrased)} > {orig_char_count}). Reverting to original layout.")
-                        final_valid_bullets[b_id] = original_text
-                    else:
-                        logger.info(f"Paraphrase successful! Resized to {len(paraphrased)} chars. Layout protected.")
-                        final_valid_bullets[b_id] = paraphrased
                 except Exception as e:
-                    logger.error(f"Micro-paraphrase exception: {e}. Reverting to original to protect layout.")
-                    final_valid_bullets[b_id] = original_text
+                    logger.error(f"Micro-paraphrase exception on attempt {retries + 1}: {e}")
+                
+                retries += 1
+            
+            # Post-retry evaluation
+            if len(draft_text) > orig_char_count:
+                logger.error(f"All {MAX_PARAPHRASE_RETRIES} paraphrase attempts failed boundary ({len(draft_text)} > {orig_char_count}). Reverting to original layout to protect 1-page compliance.")
+                final_valid_bullets[b_id] = original_text
             else:
-                final_valid_bullets[b_id] = new_text
+                if retries > 0:
+                    logger.info(f"Paraphrase successful after {retries} attempt(s)! Resized to {len(draft_text)} chars. Layout protected.")
+                final_valid_bullets[b_id] = draft_text
 
         # Reconstruct the LaTeX using only perfectly validated bullets
         refactored_latex = reconstruct_latex(templated_latex, final_valid_bullets)

@@ -195,7 +195,7 @@ async def call_paraphrase_bullet_llm(
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
-            temperature=0.1,
+            temperature=0.5,
             max_tokens=600,
         )
         content = response.choices[0].message.content.strip()
