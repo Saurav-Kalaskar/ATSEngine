@@ -13,7 +13,7 @@ from app.models.schemas import (
     TemplateResponse,
     ErrorResponse,
 )
-from app.services.llm_service import call_refactor_llm, call_condense_llm
+from app.services.llm_service import call_refactor_llm, call_condense_llm, call_paraphrase_bullet_llm
 from app.services.latex_compiler import compile_latex, LaTeXCompilationError
 from app.services.parser import parse_llm_response, parse_condense_response
 
@@ -96,7 +96,7 @@ async def refactor_resume(request: RefactorRequest):
         logger.info("Step 3: Parsing and strictly validating LLM JSON response...")
         thought_process, updated_bullets = parse_llm_response(raw_response)
         
-        # Strict validation loop
+        # Strict validation loop (Character Count Baseline)
         final_valid_bullets = {}
         for b_id, original_text in bullets_map.items():
             if b_id not in updated_bullets:
@@ -106,17 +106,32 @@ async def refactor_resume(request: RefactorRequest):
                 
             new_text = updated_bullets[b_id]
             
-            orig_word_count = len(original_text.split())
-            new_word_count = len(new_text.split())
-            word_diff = orig_word_count - new_word_count
-            
-            # Constraints: new_word_count <= orig_word_count AND new_word_count >= orig_word_count - 1
-            if word_diff < 0 or word_diff > 1:
+            orig_char_count = len(original_text)
+            new_char_count = len(new_text)
+
+            # Constraint: new_char_count MUST be <= orig_char_count to guarantee it won't trigger a new line wrap
+            if new_char_count > orig_char_count:
                 logger.warning(
-                    f"Validation failed for {b_id}: Original={orig_word_count} words, New={new_word_count} words. "
-                    f"Diff={word_diff}. Reverting to original to preserve exact layout."
+                    f"Validation failed for {b_id}: Original={orig_char_count} chars, New={new_char_count} chars. "
+                    f"Triggering micro-paraphrase to strictly fit within boundary."
                 )
-                final_valid_bullets[b_id] = original_text
+                
+                try:
+                    paraphrased = await call_paraphrase_bullet_llm(
+                        original_bullet=original_text,
+                        draft_bullet=new_text,
+                        max_chars=orig_char_count
+                    )
+                    
+                    if len(paraphrased) > orig_char_count:
+                        logger.error(f"Paraphrase failed boundary ({len(paraphrased)} > {orig_char_count}). Reverting to original layout.")
+                        final_valid_bullets[b_id] = original_text
+                    else:
+                        logger.info(f"Paraphrase successful! Resized to {len(paraphrased)} chars. Layout protected.")
+                        final_valid_bullets[b_id] = paraphrased
+                except Exception as e:
+                    logger.error(f"Micro-paraphrase exception: {e}. Reverting to original to protect layout.")
+                    final_valid_bullets[b_id] = original_text
             else:
                 final_valid_bullets[b_id] = new_text
 

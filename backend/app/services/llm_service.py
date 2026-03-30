@@ -159,3 +159,51 @@ Condense this resume to fit on exactly 1 page. Return only the <FINAL_LATEX> blo
                 latex_code, page_count, use_fallback=True
             )
         raise
+
+async def call_paraphrase_bullet_llm(
+    original_bullet: str,
+    draft_bullet: str,
+    max_chars: int,
+    use_fallback: bool = False
+) -> str:
+    """
+    Call the LLM to aggressively paraphrase a single bullet point to fit within a strict character limit,
+    without losing the newly inserted \\textbf{} keywords.
+    """
+    client = get_llm_client()
+    model = get_fallback_model() if use_fallback else get_model()
+    
+    system_prompt = (
+        "You are an absolute precision editor. Your only job is to shorten the provided text "
+        f"so it is STRICTLY LESS THAN {max_chars} characters.\n\n"
+        "RULES:\n"
+        "1. You MUST retain EVERY \\textbf{keyword} present in the draft.\n"
+        "2. Do NOT remove any LaTeX grammar (like \\textbf).\n"
+        "3. Rewrite the surrounding filler words to be maximally concise.\n"
+        f"4. The final string MUST be <= {max_chars} characters.\n"
+        "5. Output ONLY the raw shortened LaTeX string. No `<FINAL_LATEX>`, no markdown, no quotes."
+    )
+    
+    user_prompt = f"Original Bullet: {original_bullet}\nDraft Bullet (Too Long): {draft_bullet}\nTarget Max Length: {max_chars} chars.\nShorten the Draft Bullet."
+    
+    logger.info(f"Calling LLM ({model}) to micro-paraphrase bullet down to {max_chars} chars...")
+    
+    try:
+        response = await client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            temperature=0.1,
+            max_tokens=600,
+        )
+        content = response.choices[0].message.content.strip()
+        # Clean up possible markdown tags around the string just in case
+        content = content.removeprefix("```latex").removeprefix("```").removesuffix("```").strip()
+        return content
+
+    except Exception as e:
+        if not use_fallback:
+            return await call_paraphrase_bullet_llm(original_bullet, draft_bullet, max_chars, use_fallback=True)
+        raise
