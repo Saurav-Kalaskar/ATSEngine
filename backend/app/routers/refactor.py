@@ -139,6 +139,29 @@ async def refactor_resume(request: RefactorRequest):
         results = await asyncio.gather(*validation_tasks)
         final_valid_bullets = dict(results)
 
+        # Step 3.5: Final Text Sanitization & Keyword Audit
+        all_bolded_keywords = []
+        for b_id, text in final_valid_bullets.items():
+            # 1. Clean hallucinated 'extbf' anomalies. DeepSeek often token-drops the backslash 
+            # or `json.loads` translates unescaped `\textbf` into `<TAB>extbf`.
+            # This regex captures both braced (`extbf{AWS}`) and brace-less hallucinates (`extbfAWS`)
+            # while avoiding double-escaping legitimate `\textbf{...}`.
+            cleaned_text = re.sub(r'(?:\t)?(?<!\\)\bextbf\s*\{?([\w\/\-\.\+]+)\}?', r'\\textbf{\1}', text)
+            
+            # Also clean up any accidental double-bracing just in case: \textbf{{AWS}} -> \textbf{AWS}
+            cleaned_text = cleaned_text.replace(r'\textbf{{', r'\textbf{').replace(r'}}', r'}')
+
+            final_valid_bullets[b_id] = cleaned_text
+            
+            # 2. Audit successful JD keyword injections
+            found_keywords = re.findall(r'\\textbf\{([^}]+)\}', cleaned_text)
+            all_bolded_keywords.extend(found_keywords)
+
+        # Log exactly what the Algorithmic Recruiter achieved
+        logger.info(f"ATS Keyword Bolding Audit: Converted {len(all_bolded_keywords)} high-value keywords to bold -> {all_bolded_keywords}")
+        if len(all_bolded_keywords) == 0:
+            logger.warning("AUDIT FAILED: The LLM failed to format any industry keywords across the entire payload. The ATS match score may degrade!")
+
         # Reconstruct the LaTeX using only perfectly validated bullets
         refactored_latex = reconstruct_latex(templated_latex, final_valid_bullets)
         
