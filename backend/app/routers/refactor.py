@@ -3,6 +3,7 @@ API router for resume refactoring endpoints.
 """
 
 import os
+import re
 import logging
 
 import asyncio
