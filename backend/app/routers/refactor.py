@@ -155,10 +155,6 @@ async def refactor_resume(request: RefactorRequest):
         pdf_base64, page_count = await compile_latex(refactored_latex)
     except LaTeXCompilationError as e:
         logger.error(f"LaTeX compilation failed: {e}")
-        # DUMP BROKEN LATEX TRACE FOR DEBUGGING
-        with open("debug_broken.tex", "w") as f:
-            f.write(refactored_latex)
-        
         raise HTTPException(
             status_code=422,
             detail=f"LaTeX compilation failed: {str(e)}. "
