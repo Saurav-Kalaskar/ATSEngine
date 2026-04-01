@@ -152,6 +152,11 @@ async def refactor_resume(request: RefactorRequest):
             # Also clean up any accidental double-bracing just in case: \textbf{{AWS}} -> \textbf{AWS}
             cleaned_text = cleaned_text.replace(r'\textbf{{', r'\textbf{').replace(r'}}', r'}')
 
+            # 1b. Escape LaTeX-reserved special characters the LLM may inject as raw text
+            cleaned_text = re.sub(r'(?<!\\)&', r'\\&', cleaned_text)
+            cleaned_text = re.sub(r'(?<!\\)%', r'\\%', cleaned_text)
+            cleaned_text = re.sub(r'(?<!\\)#', r'\\#', cleaned_text)
+
             final_valid_bullets[b_id] = cleaned_text
             
             # 2. Audit successful JD keyword injections
