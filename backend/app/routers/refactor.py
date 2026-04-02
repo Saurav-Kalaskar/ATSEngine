@@ -149,7 +149,10 @@ async def refactor_resume(request: RefactorRequest):
             # while avoiding double-escaping legitimate `\textbf{...}`.
             cleaned_text = re.sub(r'(?:\t)?(?<!\\)\bextbf\s*\{?([\w\/\-\.\+]+)\}?', r'\\textbf{\1}', text)
             
-            # Also clean up any accidental double-bracing just in case: \textbf{{AWS}} -> \textbf{AWS}
+            # Normalize over-escaped backslashes: \\\\textbf -> \textbf
+            cleaned_text = re.sub(r'\\{2,}textbf', r'\\textbf', cleaned_text)
+            
+            # Also clean up any accidental double-bracing: \textbf{{AWS}} -> \textbf{AWS}
             cleaned_text = cleaned_text.replace(r'\textbf{{', r'\textbf{')
 
             # 1b. Brace-balance check: strip orphan closing braces that crash \itemize
@@ -173,6 +176,8 @@ async def refactor_resume(request: RefactorRequest):
             cleaned_text = re.sub(r'(?<!\\)&', r'\\&', cleaned_text)
             cleaned_text = re.sub(r'(?<!\\)%', r'\\%', cleaned_text)
             cleaned_text = re.sub(r'(?<!\\)#', r'\\#', cleaned_text)
+            # Escape underscores NOT inside LaTeX commands (e.g., data_pipeline -> data\_pipeline)
+            cleaned_text = re.sub(r'(?<!\\)_', r'\\_', cleaned_text)
 
             final_valid_bullets[b_id] = cleaned_text
             

@@ -47,7 +47,8 @@ def parse_llm_response(raw_response: str) -> tuple[str, dict]:
     
     # CRITICAL: Fix unescaped LaTeX "\textbf" inside JSON strings which json.loads 
     # would incorrectly parse as a <TAB> character (\t) followed by "extbf"
-    json_code = json_code.replace(r"\textbf", r"\\textbf")
+    # Only escape \textbf that is NOT already double-escaped (i.e., not preceded by another backslash)
+    json_code = re.sub(r'(?<!\\)\\textbf', r'\\\\textbf', json_code)
     
     try:
         updated_bullets = json.loads(json_code)
