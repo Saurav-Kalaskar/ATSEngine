@@ -131,6 +131,7 @@ export default function Home() {
           <DownloadButton
             pdfBase64={pipeline.pdfBase64}
             disabled={pipeline.status !== 'success'}
+            companyName={pipeline.companyName}
           />
         </div>
       </main>

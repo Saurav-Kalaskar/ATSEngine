@@ -3,9 +3,10 @@
 interface DownloadButtonProps {
   pdfBase64: string | null;
   disabled?: boolean;
+  companyName?: string;
 }
 
-export default function DownloadButton({ pdfBase64, disabled }: DownloadButtonProps) {
+export default function DownloadButton({ pdfBase64, disabled, companyName }: DownloadButtonProps) {
   const handleDownload = () => {
     if (!pdfBase64) return;
 
@@ -13,10 +14,13 @@ export default function DownloadButton({ pdfBase64, disabled }: DownloadButtonPr
     const blob = new Blob([bytes], { type: 'application/pdf' });
     const url = URL.createObjectURL(blob);
 
-    const timestamp = new Date().toISOString().slice(0, 10);
+    // Build filename: Saurav_Kalaskar_Resume_CompanyName.pdf
+    const companySuffix = companyName ? `_${companyName}` : '';
+    const filename = `Saurav_Kalaskar_Resume${companySuffix}.pdf`;
+
     const a = document.createElement('a');
     a.href = url;
-    a.download = `resume_refactored_${timestamp}.pdf`;
+    a.download = filename;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);

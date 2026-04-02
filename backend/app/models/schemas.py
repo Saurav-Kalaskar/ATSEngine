@@ -37,6 +37,10 @@ class RefactorResponse(BaseModel):
         default=0,
         description="Number of condensation passes needed (0 = fit first try)"
     )
+    company_name: str = Field(
+        default="",
+        description="Extracted company name from the JD for PDF filename"
+    )
 
 
 class TemplateResponse(BaseModel):

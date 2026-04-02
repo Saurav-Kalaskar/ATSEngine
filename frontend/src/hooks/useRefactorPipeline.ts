@@ -13,6 +13,7 @@ const INITIAL_STATE: PipelineState = {
   error: null,
   pageCount: null,
   condensationPasses: 0,
+  companyName: '',
 };
 
 /**
@@ -77,6 +78,7 @@ export function useRefactorPipeline() {
           error: null,
           pageCount: result.page_count,
           condensationPasses: result.condensation_passes,
+          companyName: result.company_name || '',
         });
       } catch (err) {
         const message =

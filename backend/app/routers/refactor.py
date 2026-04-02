@@ -53,6 +53,64 @@ async def get_template():
 
 from app.services.latex_parser import extract_and_templatize_bullets, reconstruct_latex
 
+
+def _extract_company_name(jd_text: str) -> str:
+    """
+    Extract company name from a job description using common patterns.
+    Returns a filesystem-safe string suitable for filenames.
+    """
+    jd_lower = jd_text.strip()
+    
+    # Pattern 1: "Company: <name>" or "Company Name: <name>"
+    match = re.search(r'(?:company\s*(?:name)?)\s*[:：]\s*([^\n,;]+)', jd_lower, re.IGNORECASE)
+    if match:
+        return _sanitize_name(match.group(1).strip())
+    
+    # Pattern 2: "About <Company>" (common in JDs)
+    match = re.search(r'\bAbout\s+([A-Z][A-Za-z0-9 &\-.]{1,40}?)(?:\n|,|\s+is\b|\s+was\b)', jd_text)
+    if match:
+        name = match.group(1).strip()
+        if len(name.split()) <= 4:  # Company names are usually short
+            return _sanitize_name(name)
+    
+    # Pattern 3: "at <Company>" near the beginning
+    match = re.search(r'\bat\s+([A-Z][A-Za-z0-9 &\-.]+?)(?:\s*[,.\n!]|\s+is\b|\s+we\b)', jd_text[:500])
+    if match:
+        name = match.group(1).strip()
+        if len(name.split()) <= 4:
+            return _sanitize_name(name)
+    
+    # Pattern 4: "join <Company>" 
+    match = re.search(r'\bjoin\s+(?:the\s+)?([A-Z][A-Za-z0-9 &\-.]+?)(?:\s*[,.\n!]|\s+team\b|\s+as\b)', jd_text[:800], re.IGNORECASE)
+    if match:
+        name = match.group(1).strip()
+        if len(name.split()) <= 4:
+            return _sanitize_name(name)
+
+    # Pattern 5: First line often has company or role - check if first line looks like a company
+    first_line = jd_text.strip().split('\n')[0].strip()
+    # If first line is short and starts with capital, it might be company or role title
+    if len(first_line) < 60 and re.match(r'^[A-Z]', first_line):
+        # Try to extract company from "Role at Company" pattern
+        at_match = re.search(r'\bat\s+([A-Z].+)$', first_line)
+        if at_match:
+            return _sanitize_name(at_match.group(1).strip())
+    
+    # Fallback: return empty (frontend will use generic name)
+    return ""
+
+
+def _sanitize_name(name: str) -> str:
+    """Convert a company name to a clean filename component."""
+    # Remove common suffixes
+    name = re.sub(r'\s*(Inc\.?|LLC|Ltd\.?|Corp\.?|Co\.?)\s*$', '', name, flags=re.IGNORECASE)
+    # Replace spaces and special chars with underscores
+    name = re.sub(r'[^A-Za-z0-9]+', '_', name)
+    # Collapse multiple underscores and strip edges
+    name = re.sub(r'_+', '_', name).strip('_')
+    return name
+
+
 @router.post(
     "/refactor",
     response_model=RefactorResponse,
@@ -70,6 +128,10 @@ async def refactor_resume(request: RefactorRequest):
     4. Reconstruct and Compile LaTeX to PDF
     """
     condensation_passes = 0
+
+    # --- Step 0: Extract company name from JD for filename ---
+    company_name = _extract_company_name(request.job_description)
+    logger.info(f"Detected company: '{company_name}'")
 
     # --- Step 1: Parse Bullet Points ---
     logger.info("Step 1: Parsing and extracting targeted bullet points...")
@@ -247,4 +309,5 @@ async def refactor_resume(request: RefactorRequest):
         pdf_base64=pdf_base64,
         page_count=page_count,
         condensation_passes=condensation_passes,
+        company_name=company_name,
     )

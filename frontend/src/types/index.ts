@@ -19,6 +19,7 @@ export interface RefactorResponse {
   pdf_base64: string;
   page_count: number;
   condensation_passes: number;
+  company_name: string;
 }
 
 export interface TemplateResponse {
@@ -34,4 +35,5 @@ export interface PipelineState {
   error: string | null;
   pageCount: number | null;
   condensationPasses: number;
+  companyName: string;
 }
