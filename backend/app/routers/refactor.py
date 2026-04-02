@@ -150,9 +150,26 @@ async def refactor_resume(request: RefactorRequest):
             cleaned_text = re.sub(r'(?:\t)?(?<!\\)\bextbf\s*\{?([\w\/\-\.\+]+)\}?', r'\\textbf{\1}', text)
             
             # Also clean up any accidental double-bracing just in case: \textbf{{AWS}} -> \textbf{AWS}
-            cleaned_text = cleaned_text.replace(r'\textbf{{', r'\textbf{').replace(r'}}', r'}')
+            cleaned_text = cleaned_text.replace(r'\textbf{{', r'\textbf{')
 
-            # 1b. Escape LaTeX-reserved special characters the LLM may inject as raw text
+            # 1b. Brace-balance check: strip orphan closing braces that crash \itemize
+            open_count = 0
+            balanced_chars = []
+            for ch in cleaned_text:
+                if ch == '{':
+                    open_count += 1
+                    balanced_chars.append(ch)
+                elif ch == '}':
+                    if open_count > 0:
+                        open_count -= 1
+                        balanced_chars.append(ch)
+                    else:
+                        logger.warning(f"Stripped orphan '}}' from {b_id} to prevent LaTeX crash")
+                else:
+                    balanced_chars.append(ch)
+            cleaned_text = ''.join(balanced_chars)
+
+            # 1c. Escape LaTeX-reserved special characters the LLM may inject as raw text
             cleaned_text = re.sub(r'(?<!\\)&', r'\\&', cleaned_text)
             cleaned_text = re.sub(r'(?<!\\)%', r'\\%', cleaned_text)
             cleaned_text = re.sub(r'(?<!\\)#', r'\\#', cleaned_text)
