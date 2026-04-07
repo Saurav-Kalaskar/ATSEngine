@@ -1,7 +1,8 @@
 """
-LLM orchestration service using OpenAI-compatible API (OpenRouter/DeepSeek).
+LLM orchestration service using OpenRouter OpenAI-compatible API.
 """
 
+import json
 import os
 import logging
 
@@ -38,22 +39,13 @@ def get_llm_client() -> AsyncOpenAI:
 
 
 def get_model() -> str:
-    """Get the configured LLM model identifier."""
-    return os.getenv("LLM_MODEL", "deepseek/deepseek-chat-v3-0324")
-
-
-def get_fallback_model() -> str:
-    """Get the fallback LLM model identifier."""
-    return os.getenv("LLM_FALLBACK_MODEL", "qwen/qwen3-coder:free")
-
-
-import json
+    """Get the configured OpenRouter model identifier."""
+    return os.getenv("LLM_MODEL", "qwen/qwen3.6-plus:free")
 
 async def call_refactor_llm(
     job_description: str,
     latex_code: str,
     bullets_map: dict,
-    use_fallback: bool = False
 ) -> str:
     """
     Call the LLM to refactor the resume bullets based on the job description.
@@ -61,14 +53,13 @@ async def call_refactor_llm(
     Args:
         job_description: The target job description text.
         latex_code: The full LaTeX code for context reading.
-        bullets_map: JSON dictionary of the extracted targeted \item bullets.
-        use_fallback: If True, use the fallback model instead of primary.
+        bullets_map: JSON dictionary of the extracted targeted \\item bullets.
 
     Returns:
         The raw LLM response text containing <THOUGHT_PROCESS> and <FINAL_JSON>.
     """
     client = get_llm_client()
-    model = get_fallback_model() if use_fallback else get_model()
+    model = get_model()
     system_prompt = build_system_prompt()
 
     user_prompt = f"""<TARGET_JD>
@@ -95,23 +86,19 @@ async def call_refactor_llm(
             temperature=0.3,
             max_tokens=8000,
         )
-        content = response.choices[0].message.content
+        content = response.choices[0].message.content or ""
+        if not content:
+            raise ValueError("LLM provider returned an empty response payload.")
         logger.info(f"LLM response received: {len(content)} characters")
         return content
 
-    except Exception as e:
-        if not use_fallback:
-            logger.warning(f"Primary model failed ({e}), trying fallback...")
-            return await call_refactor_llm(
-                job_description, latex_code, bullets_map, use_fallback=True
-            )
+    except Exception:
         raise
 
 
 async def call_condense_llm(
     latex_code: str,
     page_count: int,
-    use_fallback: bool = False
 ) -> str:
     """
     Call the LLM to condense the resume to fit on one page.
@@ -119,13 +106,11 @@ async def call_condense_llm(
     Args:
         latex_code: The current LaTeX code that compiled to >1 page.
         page_count: The current number of pages.
-        use_fallback: If True, use the fallback model.
-
     Returns:
         The raw LLM response text containing <FINAL_LATEX>.
     """
     client = get_llm_client()
-    model = get_fallback_model() if use_fallback else get_model()
+    model = get_model()
     system_prompt = build_condense_prompt(page_count)
 
     user_prompt = f"""<CURRENT_LATEX_RESUME>
@@ -147,31 +132,26 @@ Condense this resume to fit on exactly 1 page. Return only the <FINAL_LATEX> blo
             temperature=0.2,
             max_tokens=8000,
         )
-        content = response.choices[0].message.content
+        content = response.choices[0].message.content or ""
+        if not content:
+            raise ValueError("LLM provider returned an empty response payload.")
         logger.info(f"Condensation response received: {len(content)} characters")
         return content
 
-    except Exception as e:
-        if not use_fallback:
-            logger.warning(f"Primary model failed for condensation ({e}), "
-                          f"trying fallback...")
-            return await call_condense_llm(
-                latex_code, page_count, use_fallback=True
-            )
+    except Exception:
         raise
 
 async def call_paraphrase_bullet_llm(
     original_bullet: str,
     draft_bullet: str,
     max_chars: int,
-    use_fallback: bool = False
 ) -> str:
     """
     Call the LLM to aggressively paraphrase a single bullet point to fit within a strict character limit,
     without losing the newly inserted \\textbf{} keywords.
     """
     client = get_llm_client()
-    model = get_fallback_model() if use_fallback else get_model()
+    model = get_model()
     
     system_prompt = (
         "You are an absolute precision editor. Your only job is to shorten the provided text "
@@ -198,12 +178,12 @@ async def call_paraphrase_bullet_llm(
             temperature=0.5,
             max_tokens=600,
         )
-        content = response.choices[0].message.content.strip()
+        content = (response.choices[0].message.content or "").strip()
+        if not content:
+            raise ValueError("LLM provider returned an empty response payload.")
         # Clean up possible markdown tags around the string just in case
         content = content.removeprefix("```latex").removeprefix("```").removesuffix("```").strip()
         return content
 
-    except Exception as e:
-        if not use_fallback:
-            return await call_paraphrase_bullet_llm(original_bullet, draft_bullet, max_chars, use_fallback=True)
+    except Exception:
         raise

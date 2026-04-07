@@ -205,7 +205,7 @@ async def refactor_resume(request: RefactorRequest):
         # Step 3.5: Final Text Sanitization & Keyword Audit
         all_bolded_keywords = []
         for b_id, text in final_valid_bullets.items():
-            # 1. Clean hallucinated 'extbf' anomalies. DeepSeek often token-drops the backslash 
+            # 1. Clean hallucinated 'extbf' anomalies. Some LLMs may drop the backslash.
             # or `json.loads` translates unescaped `\textbf` into `<TAB>extbf`.
             # This regex captures both braced (`extbf{AWS}`) and brace-less hallucinates (`extbfAWS`)
             # while avoiding double-escaping legitimate `\textbf{...}`.
