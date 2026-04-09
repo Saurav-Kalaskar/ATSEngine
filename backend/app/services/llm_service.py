@@ -39,8 +39,14 @@ def get_llm_client() -> AsyncOpenAI:
 
 
 def get_model() -> str:
-    """Get the configured OpenRouter model identifier."""
-    return os.getenv("LLM_MODEL", "qwen/qwen3.6-plus:free")
+    """Get the configured OpenRouter model identifier from environment."""
+    model = os.getenv("LLM_MODEL")
+    if not model:
+        raise ValueError(
+            "LLM_MODEL environment variable is not set. "
+            "Please set it in your .env file."
+        )
+    return model
 
 async def call_refactor_llm(
     job_description: str,
