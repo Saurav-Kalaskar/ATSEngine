@@ -193,6 +193,45 @@ body::before {
 .header-right {
   display: flex;
   align-items: center;
+  gap: var(--space-sm);
+}
+
+.provider-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: 6px 10px;
+  border-radius: var(--radius-full);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border-subtle);
+}
+
+.provider-key {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.provider-value {
+  font-size: 0.76rem;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  border: 1px solid transparent;
+}
+
+.provider-value.openrouter {
+  color: var(--accent-secondary);
+  background: rgba(162, 155, 254, 0.12);
+  border-color: rgba(162, 155, 254, 0.25);
+}
+
+.provider-value.puter {
+  color: var(--accent-success);
+  background: var(--accent-success-dim);
+  border-color: rgba(0, 230, 118, 0.25);
 }
 
 /* --- Pipeline Status --- */
@@ -679,6 +718,12 @@ body::before {
   .header-subtitle {
     padding-left: 0;
   }
+
+  .header-right {
+    width: 100%;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
 }
 
 @media (max-width: 640px) {
@@ -688,6 +733,10 @@ body::before {
 
   .header-title {
     font-size: 1.1rem;
+  }
+
+  .provider-key {
+    display: none;
   }
 
   .pdf-container canvas {

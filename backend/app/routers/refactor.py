@@ -7,7 +7,7 @@ import re
 import logging
 
 import asyncio
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 
 from app.models.schemas import (
     RefactorRequest,
@@ -119,7 +119,7 @@ def _sanitize_name(name: str) -> str:
         502: {"model": ErrorResponse, "description": "LLM API error"},
     }
 )
-async def refactor_resume(request: RefactorRequest):
+async def refactor_resume(payload: RefactorRequest, request: Request):
     """
     Main refactoring pipeline:
     1. Parse and extract target bullet points
@@ -128,14 +128,15 @@ async def refactor_resume(request: RefactorRequest):
     4. Reconstruct and Compile LaTeX to PDF
     """
     condensation_passes = 0
+    puter_auth_token = request.headers.get("x-puter-auth-token")
 
     # --- Step 0: Extract company name from JD for filename ---
-    company_name = _extract_company_name(request.job_description)
+    company_name = _extract_company_name(payload.job_description)
     logger.info(f"Detected company: '{company_name}'")
 
     # --- Step 1: Parse Bullet Points ---
     logger.info("Step 1: Parsing and extracting targeted bullet points...")
-    bullets_map, templated_latex = extract_and_templatize_bullets(request.latex_code)
+    bullets_map, templated_latex = extract_and_templatize_bullets(payload.latex_code)
     
     if not bullets_map:
         raise HTTPException(status_code=400, detail="Could not find any bullet points in Professional Experience or Projects sections.")
@@ -144,9 +145,10 @@ async def refactor_resume(request: RefactorRequest):
     try:
         logger.info(f"Step 2: Calling LLM for resume refactoring ({len(bullets_map)} bullets)...")
         raw_response = await call_refactor_llm(
-            job_description=request.job_description,
-            latex_code=request.latex_code,
-            bullets_map=bullets_map
+            job_description=payload.job_description,
+            latex_code=payload.latex_code,
+            bullets_map=bullets_map,
+            puter_auth_token=puter_auth_token,
         )
     except Exception as e:
         logger.error(f"LLM API call failed: {e}")
@@ -176,7 +178,8 @@ async def refactor_resume(request: RefactorRequest):
                     draft_text = await call_paraphrase_bullet_llm(
                         original_bullet=original_text,
                         draft_bullet=draft_text,
-                        max_chars=orig_char_count
+                        max_chars=orig_char_count,
+                        puter_auth_token=puter_auth_token,
                     )
                 except Exception as e:
                     logger.error(f"Micro-paraphrase exception on attempt {retries + 1}: {e}")
@@ -286,6 +289,7 @@ async def refactor_resume(request: RefactorRequest):
             condense_response = await call_condense_llm(
                 latex_code=refactored_latex,
                 page_count=page_count,
+                puter_auth_token=puter_auth_token,
             )
             refactored_latex = parse_condense_response(condense_response)
         except (ValueError, Exception) as e:
