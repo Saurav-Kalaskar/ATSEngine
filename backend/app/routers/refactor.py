@@ -127,8 +127,7 @@ async def refactor_resume(payload: RefactorRequest, request: Request):
     3. Programmatically validate structural lengths (length diff must be <= 0 and >= -1 word)
     4. Reconstruct and Compile LaTeX to PDF
     """
-    condensation_passes = 0
-    puter_auth_token = request.headers.get("x-puter-auth-token")
+     condensation_passes = 0
 
     # --- Step 0: Extract company name from JD for filename ---
     company_name = _extract_company_name(payload.job_description)
@@ -148,7 +147,6 @@ async def refactor_resume(payload: RefactorRequest, request: Request):
             job_description=payload.job_description,
             latex_code=payload.latex_code,
             bullets_map=bullets_map,
-            puter_auth_token=puter_auth_token,
         )
     except Exception as e:
         logger.error(f"LLM API call failed: {e}")
@@ -179,7 +177,6 @@ async def refactor_resume(payload: RefactorRequest, request: Request):
                         original_bullet=original_text,
                         draft_bullet=draft_text,
                         max_chars=orig_char_count,
-                        puter_auth_token=puter_auth_token,
                     )
                 except Exception as e:
                     logger.error(f"Micro-paraphrase exception on attempt {retries + 1}: {e}")
@@ -289,7 +286,6 @@ async def refactor_resume(payload: RefactorRequest, request: Request):
             condense_response = await call_condense_llm(
                 latex_code=refactored_latex,
                 page_count=page_count,
-                puter_auth_token=puter_auth_token,
             )
             refactored_latex = parse_condense_response(condense_response)
         except (ValueError, Exception) as e:
